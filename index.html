@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0 user-scalable=no">
+<title>HTML5とJavaScriptによるゲーム開発</title>
+</head>
+<body>
+<canvas style="position:absolute; top:0; bottom:0; left:0; right:0; margin:auto;" id="bg"></canvas>
+<script>
+var winW = window.innerWidth;
+var winH = window.innerHeight;
+var canvas = document.getElementById("bg");
+canvas.width = winW;
+canvas.height = winH;
+var cnt = canvas.getContext("2d");
+var SCALE = winW / 384;
+cnt.scale( SCALE, SCALE );
+cnt.font = "32px monospace";
+cnt.textAlign = "center";
+cnt.textBaseline = "middle";
+
+//マウスとタップの判定
+var tapX = 0, tapY = 0, tapC = 0;
+
+canvas.addEventListener( "touchstart", touchStart );
+canvas.addEventListener( "touchmove", touchMove );
+canvas.addEventListener( "touchend", touchEnd );
+function touchStart(event) {
+ event.preventDefault();
+ var rect = event.target.getBoundingClientRect();
+ tapX = event.touches[0].clientX-rect.left;
+ tapY = event.touches[0].clientY-rect.top;
+ transformXY();
+ tapC = 1;
+}
+function touchMove(event) {
+ event.preventDefault();
+ var rect = event.target.getBoundingClientRect();
+ tapX = event.touches[0].clientX-rect.left;
+ tapY = event.touches[0].clientY-rect.top;
+ transformXY();
+}
+function touchEnd(event) { tapC = 0; }
+
+canvas.addEventListener( "mousedown", mouseDown );
+canvas.addEventListener( "mousemove", mouseMove );
+canvas.addEventListener( "mouseup", mouseUp );
+function mouseDown(event) {
+ var rect = event.target.getBoundingClientRect();
+ tapX = event.clientX-rect.left;
+ tapY = event.clientY-rect.top;
+ transformXY();
+ tapC = 1;
+}
+function mouseMove(event) {
+ var rect = event.target.getBoundingClientRect();
+ tapX = event.clientX-rect.left;
+ tapY = event.clientY-rect.top;
+ transformXY();
+}
+function mouseUp(event) { tapC = 0; }
+
+function transformXY() {//実座標→仮想座標への変換
+ tapX = toInt(tapX/SCALE);
+ tapY = toInt(tapY/SCALE);
+}
+
+//キー入力
+var key = 0;
+window.onkeydown = function(event) { key = event.keyCode; }
+window.onkeyup = function(event) { key = 0; }
+
+function toInt( val ) {//整数を返す関数
+ return parseInt(val);
+}
+
+//画像ファイル用の配列
+var img = [];
+var imgPre = [];
+
+function loadImg( n ) {//画像を読み込む
+ imgPre[n] = false;
+ img[n] = new Image();
+ img[n].src = "example242_" + n + ".png";
+ img[n].onload = function() { imgPre[n] = true; }
+}
+
+function drawImg( chip, dx, dy ) {//マップチップを切り出し表示
+ if( imgPre[0] != true ) return;
+ var sx = 1+33*chip;
+ var sy = 1;
+ cnt.drawImage( img[0], sx, sy, 32, 32, dx, dy, 32+1, 32+1 );
+}
+
+function drawImg2( x, y ) {//木の上の部分を表示
+ if( imgPre[0] != true ) return;
+ cnt.drawImage( img[0], 0, 34, 82, 88, x*32-26, y*32-80, 82, 88 )
+}
+
+function drawCharacter( dx, dy, dir, ptn ) {//キャラクターを表示
+ if( imgPre[1] != true ) return;
+ var sx = 32*ptn;
+ var sy = 54*dir;
+ cnt.drawImage( img[1], sx, sy, 32, 54, dx, dy, 32, 54 );
+}
+
+function fText( str, x, y, col ) {//文字表示
+ cnt.fillStyle = col;
+ cnt.fillText( str, x, y );
+}
+
+function fRect( x, y, w, h, col ) {//矩形
+ cnt.fillStyle = col;
+ cnt.fillRect( x, y, w, h );
+}
+
+function setAlp( per ) {//透明度
+ cnt.globalAlpha = per/100;
+}
+
+function drawBtn( str, x, y, w, h ) {//ボタン
+ fRect( x, y, w, h, "#fff" );
+ fRect( x+1, y+1, w-1, h-1, "#abb" );
+ fRect( x+1, y+1, w-2, h-2, "#cdd" );
+ fText( str, x+w/2, y+h/2, "#000" );
+ if( x < tapX && tapX < x+w && y < tapY && tapY < y+h ) {
+  if( tapC == 1 )
+   setAlp(60);
+  else
+   setAlp(20);
+  fRect( x, y, w, h, "#fff" );
+  setAlp(100);
+  return tapC;
+ }
+ return 0;
+}
+
+//変数の宣言
+var idx = 0;
+var tmr = 0;
+
+var playerX, playerY, playerD, playerStep;
+var WALK_PTN = [ 0, 1, 0, 2 ];
+
+var MAP_DATA = [
+[ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 ],
+[ 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 2, 1 ],
+[ 1, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 1 ],
+[ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 ],
+[ 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1 ],
+[ 1, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 1 ],
+[ 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1 ],
+[ 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 ],
+];
+
+function hitChkBG( x, y ) {
+ var cx = toInt(x/32);
+ var cy = toInt(y/32);
+ return MAP_DATA[cy][cx];
+}
+
+window.onload = moveChr();
+function moveChr() {
+ var x, y;
+ tmr ++;
+
+ switch( idx ) {
+  case 0://初期化処理
+  loadImg(0);//背景画像の読み込み
+  loadImg(1);//キャラクター画像の読み込み
+  playerX = 5*32;
+  playerY = 4*32;
+  playerD = 1;
+  playerStep = 0;
+  idx = 1;
+  break;
+
+  case 1://移動処理
+  if( playerStep == 0 ) {//停止中
+   if( key == 38 || drawBtn( "↑",  96, 256, 192, 48 ) == 1 ) {
+    playerD = 0;
+    if( hitChkBG( playerX, playerY-32 ) == 0 ) playerStep = 4;
+   }
+   if( key == 40 || drawBtn( "↓",  96, 304, 192, 48 ) == 1 ) {
+    playerD = 1;
+    if( hitChkBG( playerX, playerY+32 ) == 0 ) playerStep = 4;
+   }
+   if( key == 37 || drawBtn( "←",   0, 256,  96, 96 ) == 1 ) {
+    playerD = 2;
+    if( hitChkBG( playerX-32, playerY ) == 0 ) playerStep = 4;
+   }
+   if( key == 39 || drawBtn( "→", 288, 256,  96, 96 ) == 1 ) {
+    playerD = 3;
+    if( hitChkBG( playerX+32, playerY ) == 0 ) playerStep = 4;
+   }
+  }
+  if( playerStep != 0 ) {//歩行中
+   if( playerD == 0 ) playerY -= 8;
+   if( playerD == 1 ) playerY += 8;
+   if( playerD == 2 ) playerX -= 8;
+   if( playerD == 3 ) playerX += 8;
+   playerStep --;
+  }
+
+  for( y = 0; y < 8; y ++ ) {
+   for( x = 0; x < 12; x ++ ) drawImg( MAP_DATA[y][x], x*32, y*32 );
+  }
+  drawCharacter( playerX, playerY-28, playerD, WALK_PTN[tmr%4] );
+  for( y = 0; y < 8; y ++ ) {
+   for( x = 0; x < 12; x ++ ) if( MAP_DATA[y][x] == 2 ) drawImg2( x, y );
+  }
+  break;
+ }
+
+ setTimeout( moveChr, 100 );
+}
+</script>
+<hr><a href="../jsh5_024.html">講座に戻る</a>
+</body>
+</html>
